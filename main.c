@@ -1,8 +1,11 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 #include <stdbool.h>
+#include <time.h>
 
-#define CACHE_SIZE 256
+
+#define CACHE_SIZE 16
 #define ASSOCIATIVITY 4 
 #define AMAX 10
 #define CACHESIM 1    /* Set to 1 if simulating Cache */
@@ -25,7 +28,7 @@ typedef struct CacheLine {
 } CacheLine;
 
 typedef struct CacheSet {
-   CacheLine cacheSet[ASSOCIATIVITY];
+   CacheLine cacheLines[ASSOCIATIVITY];
 } CacheSet;
 
 CacheSet cache[CACHE_SIZE]; 
@@ -33,7 +36,12 @@ CacheSet cache[CACHE_SIZE];
 bool is64Bit;
 int index_bits;
 
-void getFields(Fields *fields, int *pointer){
+int hits;
+int misses;
+int writes;
+int reads;
+
+void get_fields(Fields *fields, int *pointer){
    unsigned address = (unsigned long) pointer;
    unsigned tag_shift = is64Bit ? 64 - index_bits - BLOCK_BITS : 32 - index_bits - BLOCK_BITS;
 
@@ -42,19 +50,67 @@ void getFields(Fields *fields, int *pointer){
    fields->tag = (address >> tag_shift);
 }
 
+int random_replace(CacheSet set){
+   int i;
+   int replacement;
+   CacheLine line;
+
+   for (i = 0; i < ASSOCIATIVITY; i++){
+    line = set.cacheLines[i];
+    if (line.valid)
+      return i;
+  }
+  return rand() % ASSOCIATIVITY;
+}
+
+
+void print_cache(){
+   int i;
+   int j;
+   CacheLine line;
+ 
+   printf("Index   V       Tag     Data\n\n");
+   for (i = 0; i < CACHE_SIZE; i++){
+      printf("0x%X", i);
+      for (j = 0; j < ASSOCIATIVITY; j++){
+         line = cache[i].cacheLines[j];
+         printf("\t%d\t0x%X\t0x%X\n", line.valid, line.tag, line.data);
+      }
+      printf("\n");
+   }
+}
+
 /* This function gets called with each "read" reference to memory */
 void mem_read(int *mp){
    Fields fields;
    CacheSet set;
+   CacheLine line;
    int i;
+   bool foundHit = false;
 
-   getFields(&fields, mp);
+   get_fields(&fields, mp);
    /* printf("Memory read from location %p\n", mp);  */
-   printf("Set number: %0X\n", fields.index);
    set = cache[fields.index];
 
    for(i = 0; i < ASSOCIATIVITY; i++){
-      CacheLine line = set.cacheSet[i];
+      line = set.cacheLines[i];
+      /* If we're valid and the tags match, HIT! */
+      if(line.valid && line.tag == fields.tag){
+         foundHit = true;
+         hits++;
+         break;
+      }
+   }
+
+   if(!foundHit){
+      misses++;
+      writes++;
+      i = random_replace(set);
+      line = set.cacheLines[i];
+
+      line.valid = 1;
+      line.data = *mp;
+      line.tag = fields.tag;
    }
 
 }
@@ -106,7 +162,10 @@ int main() {
 
    int *mp1, *mp2, *mp3;
 
+   hits = misses = writes = 0;
+
    index_bits = ceil(log2(CACHE_SIZE));
+   srand(time(NULL));
 
    printf("Size of pointer is: %d\n\n", (unsigned) sizeof(mp1));
 
@@ -141,7 +200,7 @@ int main() {
    printf("\nEnter elements of matrix 2:\n");
 
    for(i=0; i<r2; ++i)
-     for(j=0; j<c2; ++j) {
+      for(j=0; j<c2; ++j) {
          // printf("Enter elements b%d%d: ", i + 1, j + 1);
          // scanf("%d",&b[i][j]);
          b[i][j] = 10 + i + j;
@@ -154,10 +213,13 @@ int main() {
    printf("\nOutput Matrix:\n");
 
    for(i=0; i<r1; ++i)
-     for(j=0; j<c2; ++j){
-        printf("%d  ",mult[i][j]);
-        if(j==c2-1) printf("\n\n");
-     }
+      for(j=0; j<c2; ++j){
+         printf("%d  ",mult[i][j]);
+         if(j==c2-1) printf("\n\n");
+      }
+
+   printf("Finished with:\n\tHits: %d\n\tMisses: %d\n\tWrites: %d\n\tReads: %d\n\t\n", hits, misses, writes, reads);
+   //print_cache();
 
    return 0;
 }
