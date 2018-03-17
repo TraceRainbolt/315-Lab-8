@@ -25,7 +25,7 @@ typedef struct CacheLine {
 } CacheLine;
 
 typedef struct CacheSet {
-   CacheLine cacheSet[ASSOCIATIVITY];
+   CacheLine cacheLines[ASSOCIATIVITY];
 } CacheSet;
 
 CacheSet cache[CACHE_SIZE]; 
@@ -33,7 +33,7 @@ CacheSet cache[CACHE_SIZE];
 bool is64Bit;
 int index_bits;
 
-void getFields(Fields *fields, int *pointer){
+void get_fields(Fields *fields, int *pointer){
    unsigned address = (unsigned long) pointer;
    unsigned tag_shift = is64Bit ? 64 - index_bits - BLOCK_BITS : 32 - index_bits - BLOCK_BITS;
 
@@ -61,9 +61,22 @@ void mem_read(int *mp){
 
 
 /* This function gets called with each "write" reference to memory */
-void mem_write(int *mp){
+void mem_write(int *mp) {
+   int index; 
+   Fields fields;
+   CacheSet cacheset;
+   CacheLine cacheline;
 
+   writes++;
+   get_fields(&fields, mp);
+   cacheset = cache[fields.index];
+   index = random_replce(cacheset);
    /* printf("Memory write to location %p\n", mp); */
+   cacheline = cacheset.cacheLines[index];
+
+   cacheline.valid = 1;
+   cacheline.tag = fields.tag;
+   cacheline.data = *mp;
 
 }
 
